@@ -1,4 +1,4 @@
-﻿namespace ContactsSampleApp.Models
+﻿namespace DomainModels
 {
     public class Contact
     {
