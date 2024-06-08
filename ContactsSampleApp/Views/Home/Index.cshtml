@@ -1,0 +1,158 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+@* <div class="text-center">
+    <h1 class="display-4">Welcome</h1>
+    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+</div>
+ *@
+
+@{
+    ViewData["Title"] = "Contacts";
+}
+
+<h2>Contacts</h2>
+
+<div id="contacts-container" class="row">
+    <!-- Contacts will be displayed here -->
+</div>
+
+<div class="text-center">
+    <button id="show-more" class="btn btn-primary">Show More</button>
+    <button id="download-excel" class="btn btn-success">Download Excel Report</button>
+</div>
+
+<!-- Spinner -->
+<div class="spinner-border text-primary" role="status" id="loading-spinner">
+    <span class="sr-only">Loading...</span>
+</div>
+
+@section Scripts {
+    
+    <script>
+        var pageNumber = 1;
+        var pageSize = 20;
+
+        function showSpinner() {
+            $('#loading-spinner').show();
+        }
+
+        function hideSpinner() {
+            $('#loading-spinner').hide();
+        }
+
+        function loadContacts() {
+            showSpinner();
+            $.getJSON('@Url.Action("GetContacts", "Home")', { pageNumber: pageNumber, pageSize: pageSize }, function (data) {
+                var container = $('#contacts-container');
+                $.each(data.contacts, function (index, contact) {
+                    var contactHtml = `
+                                <div class="col-md-3 mb-3">
+                                    <div class="card">
+                                        <img class="card-img-top" src="${contact.imageUrl}" alt="${contact.name}">
+                                        <div class="card-body">
+                                            <h5 class="card-title">${contact.name}</h5>
+                                            <p class="card-text">${contact.email}<br>${contact.phone}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                    container.append(contactHtml);
+                });
+
+                if (!data.hasMore) {
+                    $('#show-more').hide();
+                }
+                hideSpinner();
+            }).fail(function () {
+                hideSpinner();
+                alert('Failed to load contacts');
+            });
+        }
+
+        function urlToResizedBase64(url, width, height) {
+            return new Promise((resolve, reject) => {
+                let img = new Image();
+                img.crossOrigin = 'Anonymous';
+                img.onload = function () {
+                    let canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    let ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL().split(',')[1]);
+                };
+                img.onerror = reject;
+                img.src = url;
+            });
+        }
+
+        async function downloadExcel() {
+            showSpinner();
+            try {
+                const workbook = new ExcelJS.Workbook();
+                const worksheet = workbook.addWorksheet('Contacts');
+
+                // Define columns
+                worksheet.columns = [
+                    { header: 'ID', key: 'id', width: 10 },
+                    { header: 'Name', key: 'name', width: 30 },
+                    { header: 'Email', key: 'email', width: 30 },
+                    { header: 'Phone', key: 'phone', width: 15 },
+                    { header: 'Image', key: 'image', width: 30 },
+                ];
+
+                // Fetch contacts data
+                const response = await $.getJSON('@Url.Action("GetContacts", "Home")', { pageNumber: 1, pageSize: 1000 });
+                const contacts = response.contacts;
+
+                const imageWidth = 100;
+                const imageHeight = 100;
+                const rowHeight = imageHeight * 0.75; // Excel row height units (approx)
+
+                for (let contact of contacts) {
+                    const row = worksheet.addRow({
+                        id: contact.id,
+                        name: contact.name,
+                        email: contact.email,
+                        phone: contact.phone
+                    });
+
+                    const resizedBase64 = await urlToResizedBase64(contact.imageUrl, imageWidth, imageHeight);
+                    const imageId = workbook.addImage({
+                        base64: resizedBase64,
+                        extension: 'jpeg',
+                    });
+
+                    worksheet.addImage(imageId, {
+                        tl: { col: 4, row: row.number - 1 },
+                        ext: { width: imageWidth, height: imageHeight },
+                    });
+
+                    row.height = rowHeight; // Set the row height
+                }
+
+                const buffer = await workbook.xlsx.writeBuffer();
+                saveAs(new Blob([buffer], { type: 'application/octet-stream' }), 'ContactsReport.xlsx');
+            } catch (error) {
+                alert('Failed to generate Excel report');
+            } finally {
+                hideSpinner();
+            }
+        }
+
+        $(document).ready(function () {
+            loadContacts();
+
+            $('#show-more').click(function () {
+                pageNumber++;
+                loadContacts();
+            });
+
+            $('#download-excel').click(function () {
+                downloadExcel();
+            });
+        });
+    </script>
+}
